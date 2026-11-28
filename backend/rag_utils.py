@@ -6,7 +6,7 @@ INSUFFICIENT_ANSWER = (
     "The available policy documents do not contain enough information to answer this question."
 )
 
-def retrieve(query: str, k: int = 5, vectorstore=None) -> list[str]:
+def retrieve(query: str, k: int = 8, vectorstore=None) -> list[str]:
     if not query or not query.strip():
         raise ValueError("query must not be empty")
     if vectorstore is None:
@@ -50,7 +50,7 @@ If the retrieved passages do not contain enough information, say:
 
 def rag(
     query: str,
-    k: int = 5,
+    k: int = 8,
     model_name: str = "gpt-4o-mini",
     temperature: float = 0.0,
     top_p: float = 1.0,
