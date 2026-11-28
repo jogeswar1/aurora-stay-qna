@@ -9,7 +9,7 @@ st.set_page_config(page_title="Aurora Stays", page_icon="🏨", layout="wide")
 
 with st.sidebar:
     st.header("⚙️ Parameters")
-    k = st.slider("Chunks to retrieve (k)", 1, 20, 5)
+    k = st.slider("Chunks to retrieve (k)", 1, 20, 8)
     temperature = st.slider("Temperature", 0.0, 1.0, 0.0, 0.1)
     max_tokens = st.slider("Max answer tokens", 64, 2048, 512, 64)
 
