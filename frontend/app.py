@@ -1,151 +1,75 @@
 
+import os
 import streamlit as st
 import requests
 
+BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:7860").rstrip("/")
 
-# ---------------------------------------------------------
-# Configuration
-# ---------------------------------------------------------
-
-BACKEND_URL = "http://localhost:7860"
-
-
-# ---------------------------------------------------------
-# Page configuration
-# ---------------------------------------------------------
-
-st.set_page_config(
-    page_title="Aurora Stays",
-    page_icon="🏨",
-    layout="wide"
-)
-
-
-# ---------------------------------------------------------
-# Sidebar  -  Model parameters
-# ---------------------------------------------------------
+st.set_page_config(page_title="Aurora Stays", page_icon="🏨", layout="wide")
 
 with st.sidebar:
-
     st.header("⚙️ Parameters")
-
-    k = st.slider(
-        "k (chunks to retrieve)",
-        min_value=1,
-        max_value=10,
-        value=2,
-        help="Number of relevant chunks fetched from the vector store."
-    )
-
-    temperature = st.slider(
-        "Temperature",
-        min_value=0.0,
-        max_value=1.0,
-        value=0.0,
-        step=0.1,
-        help="Higher values make the output more creative; lower values make it more focused."
-    )
-
-    max_tokens = st.slider(
-        "Max tokens",
-        min_value=64,
-        max_value=2048,
-        value=512,
-        step=64,
-        help="Maximum number of tokens in the generated answer."
-    )
-
-
-# ---------------------------------------------------------
-# Main area
-# ---------------------------------------------------------
+    k = st.slider("Chunks to retrieve (k)", 1, 20, 5)
+    temperature = st.slider("Temperature", 0.0, 1.0, 0.0, 0.1)
+    max_tokens = st.slider("Max answer tokens", 64, 2048, 512, 64)
 
 st.title("🏨 Aurora Stays")
-st.write("Ask a question about Aurora Stays policies.")
-
-
-# ---------------------------------------------------------
-# Response type selection (two options only)
-# ---------------------------------------------------------
+st.write("Ask a question about AuroraStay hotel policies.")
 
 response_type = st.radio(
     "Response mode",
     ["Answer only", "Answer + Relevant Chunks"],
-    horizontal=True
+    horizontal=True,
 )
-
-
-# ---------------------------------------------------------
-# Query input
-# ---------------------------------------------------------
-
 query = st.text_input(
     "Your question",
-    placeholder="e.g., What is the waiting period for hospitalization?"
+    placeholder="e.g., Is breakfast included at the Miami Brickell property?",
 )
 
-
-# ---------------------------------------------------------
-# Submit
-# ---------------------------------------------------------
-
 if st.button("Submit", type="primary"):
-
     if not query.strip():
         st.warning("Please enter a question.")
-
     else:
-
-        # Pick endpoint
-        if response_type == "Answer only":
-            endpoint = "/v1/answer"
-        else:
-            endpoint = "/v1/answer_with_relevant_chunks"
-
-        # Build request payload with parameters
+        endpoint = (
+            "/v1/answer"
+            if response_type == "Answer only"
+            else "/v1/answer_with_relevant_chunks"
+        )
         payload = {
-            "query": query,
+            "query": query.strip(),
             "k": k,
             "temperature": temperature,
-            "max_tokens": max_tokens
+            "max_tokens": max_tokens,
         }
 
         try:
-            with st.spinner("Thinking…"):
+            with st.spinner("Searching the policy documents and preparing an answer..."):
                 response = requests.post(
                     f"{BACKEND_URL}{endpoint}",
-                    json=payload
+                    json=payload,
+                    timeout=180,
                 )
 
-            if response.status_code == 200:
-
+            if response.ok:
                 result = response.json()
+                st.subheader("Answer")
+                st.write(result.get("answer", "The API returned no answer."))
 
-                # -- Answer only --------------------------------
-                if response_type == "Answer only":
-
-                    st.subheader("Answer")
-                    st.write(result["answer"])
-
-                # -- Answer + Relevant Chunks -------------------
-                else:
-
-                    st.subheader("Answer")
-                    st.write(result["answer"])
-
-                    st.subheader("Relevant Chunks")
-                    for i, chunk in enumerate(result["relevant_chunks"], start=1):
-                        with st.expander(f"Chunk {i}"):
+                if response_type == "Answer + Relevant Chunks":
+                    st.subheader("Retrieved policy passages")
+                    for i, chunk in enumerate(result.get("relevant_chunks", []), start=1):
+                        with st.expander(f"Retrieved passage {i}"):
                             st.write(chunk)
-
             else:
-                st.error(
-                    f"Unable to get a response from the RAG API. "
-                    f"Status code: {response.status_code}"
-                )
+                try:
+                    detail = response.json()
+                except ValueError:
+                    detail = response.text
+                st.error(f"Backend error ({response.status_code}): {detail}")
 
-        except requests.exceptions.RequestException:
+        except requests.exceptions.RequestException as exc:
             st.error(
-                "Unable to connect to the RAG API. "
-                "Please make sure the backend service is running."
+                f"Cannot connect to the backend at {BACKEND_URL}. "
+                f"Confirm the backend is running and the Codespaces port is Public. "
+                f"Details: {exc}"
             )
