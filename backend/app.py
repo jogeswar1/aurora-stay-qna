@@ -39,7 +39,7 @@ def read_payload():
         return None, (jsonify({"error": "'query' is required and must be a non-empty string."}), 400)
 
     try:
-        k = int(data.get("k", 5))
+        k = int(data.get("k", 8))
         max_tokens = int(data.get("max_tokens", 512))
         temperature = float(data.get("temperature", 0.0))
         top_p = float(data.get("top_p", 1.0))
@@ -58,7 +58,8 @@ def read_payload():
         "k": k,
         "model_name": data.get("model_name", "gpt-4o-mini"),
         "temperature": temperature,
-        "top_p": top_p,
+     #   "top_p": top_p,
+        "top_p": 1.0,
         "max_tokens": max_tokens,
     }, None
 
