@@ -1,76 +1,76 @@
 
-from langchain_openai import ChatOpenAI
 import os
+from langchain_openai import ChatOpenAI
 
-# Retrieve the top-k relevant chunks from the vector store
-def retrieve(query: str, k: int = 2,vectorstore=None) -> list[str]:
+INSUFFICIENT_ANSWER = (
+    "The available policy documents do not contain enough information to answer this question."
+)
+
+def retrieve(query: str, k: int = 5, vectorstore=None) -> list[str]:
+    if not query or not query.strip():
+        raise ValueError("query must not be empty")
+    if vectorstore is None:
+        raise ValueError("vectorstore is required")
+
+    k = max(1, min(int(k), 20))
     results = vectorstore.similarity_search(query, k=k)
 
-    # Return each chunk with its content and metadata
     return [
-        f"Content:\n{r.page_content}\n\nMetadata:\n{r.metadata}"
-        for r in results
+        (
+            f"Source: {doc.metadata.get('source', 'unknown')}\n"
+            f"Content type: {doc.metadata.get('content_type', 'unknown')}\n"
+            f"Content:\n{doc.page_content}"
+        )
+        for doc in results
     ]
 
-# Define the generation function that prompts the LLM with retrieved context
-def generate(query, retrieved_chunks,model) -> str:
+def generate(query: str, retrieved_chunks: list[str], model) -> str:
+    context = "\n\n--- Retrieved passage ---\n\n".join(retrieved_chunks)
+    prompt = f"""You are an assistant answering questions about AuroraStay hotel policies.
 
-    prompt = f"""
-    You are an AI assistant answering questions
-about AuroraStay hotel policies.
-    User Query: 
-    {query}
+Question:
+{query}
 
-    Retrieved Policy Information:
-    {retrieved_chunks}
+Retrieved policy passages:
+{context}
 
-    Rules:
-    1. Use only information explicitly supported by the retrieved policy information.
-    2. Do not use outside knowledge, assumptions, or information not present in the retrieved policy information.
-    3. Include all relevant information needed to answer the query completely.
-    4. Do not omit important conditions, exclusions, limitations, exceptions, or coverage details.
-    5. Focus only on information directly relevant to the user's query.
-    6. Do not include unrelated information from the retrieved policy information.
-    7. Answer the user's specific question directly and ensure the response addresses what was asked.
-    8. Keep the answer concise, clear, and easy to understand.
-    9. Do not invent benefits, exclusions, limits, waiting periods, conditions, or coverage details.
-    10. If the information is insufficient, say:
-        "The available policy documents do not contain enough information to answer this question."
-        If the retrieved information conflicts, clearly mention the conflict.
+Instructions:
+- Answer only from the retrieved passages. Do not use outside knowledge or assumptions.
+- Treat table labels and values as connected; interpret each value in the context of its column/header labels.
+- Include relevant amounts, units, property names, conditions, exceptions, and limitations when present.
+- If the passages do not support a complete answer, say what is missing.
+- If the passages conflict, explain the conflict and identify the sources if possible.
+- Do not claim a policy does not exist merely because one retrieved passage omits it.
+- Be concise and direct.
 
-    Answer:
-    """
-
+If the retrieved passages do not contain enough information, say:
+"{INSUFFICIENT_ANSWER}"
+"""
     return model.invoke(prompt)
 
-# Define the full RAG pipeline combining retrieval and generation
 def rag(
     query: str,
-    k: int = 2,
+    k: int = 5,
     model_name: str = "gpt-4o-mini",
     temperature: float = 0.0,
     top_p: float = 1.0,
     max_tokens: int = 512,
-    vectorstore=None
+    vectorstore=None,
 ):
-    # Create the generator model
+    api_key = os.getenv("OPENAI_API_KEY")
+    api_base = os.getenv("OPENAI_API_BASE")
+    if not api_key or not api_base:
+        raise RuntimeError("OPENAI_API_KEY and OPENAI_API_BASE are not configured.")
+
     model = ChatOpenAI(
         model=model_name,
         temperature=temperature,
         top_p=top_p,
         max_tokens=max_tokens,
-        openai_api_key=os.getenv('OPENAI_API_KEY'),
-        openai_api_base=os.getenv('OPENAI_API_BASE')
+        api_key=api_key,
+        base_url=api_base,
     )
 
-    # Retrieve relevant chunks
-    retrieved_chunks = retrieve(query=query, k=k,vectorstore=vectorstore)
-
-    # Generate answer using retrieved chunks
-    answer = generate(
-        query=query,
-        retrieved_chunks=retrieved_chunks,
-        model=model
-    )
-
-    return answer.content, retrieved_chunks
+    chunks = retrieve(query=query, k=k, vectorstore=vectorstore)
+    answer = generate(query=query, retrieved_chunks=chunks, model=model)
+    return answer.content, chunks
